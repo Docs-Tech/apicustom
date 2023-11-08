@@ -47,3 +47,67 @@ def cosine_similarity():
 
     return jsonify({'most_similar_text': texts[most_similar_index]})
 
+
+from flask import Flask, request, render_template, send_file
+from transformers import AutoModelForQuestionAnswering, AutoTokenizer
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+app = Flask(__name)
+
+# Load a pre-trained question-answering model
+model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForQuestionAnswering.from_pretrained(model_name)
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    if request.method == "POST":
+        # Get user input and uploaded document
+        user_question = request.form["question"]
+        uploaded_document = request.files["document"]
+
+        # Process the uploaded document
+        document_text = process_uploaded_document(uploaded_document)
+
+        # Answer the user's question based on the document
+        answer = answer_question(user_question, document_text)
+
+        # Create a PDF with the answer
+        create_pdf(answer, "response.pdf")
+
+        return render_template("home.html", answer=answer)
+
+    return render_template("home.html", answer=None)
+
+def process_uploaded_document(uploaded_document):
+    # Use a document processing library to extract and preprocess the document text
+    # Return the document text
+    pass
+
+def answer_question(question, document_text):
+    # Tokenize the question and document
+    inputs = tokenizer(question, document_text, return_tensors="pt", padding=True, truncation=True)
+    
+    # Get the answer
+    answer_start_scores, answer_end_scores = model(**inputs)
+    answer_start = torch.argmax(answer_start_scores)
+    answer_end = torch.argmax(answer_end_scores) + 1
+    
+    answer = tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][answer_start:answer_end]))
+    return answer
+
+def create_pdf(answer, filename):
+    c = canvas.Canvas(filename, pagesize=letter)
+    c.drawString(100, 750, "Answer:")
+    c.drawString(100, 725, answer)
+    c.save()
+
+    return filename
+
+@app.route('/download-pdf')
+def download_pdf():
+    return send_file("response.pdf", as_attachment=True)
+
+if __name__ == "__main__":
+    app.run(debug=True)
